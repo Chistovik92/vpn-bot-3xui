@@ -1,5 +1,15 @@
+#!/usr/bin/env python3
+"""
+Инициализация базы данных
+"""
+
 import sqlite3
 import os
+import sys
+
+# Добавляем путь для импорта config
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from config.config import Config
 
 def init_db():
@@ -50,7 +60,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print("База данных инициализирована")
+    print("✅ База данных инициализирована")
 
 if __name__ == "__main__":
     init_db()
