@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  vpn-bot:
+    build: .
+    container_name: vpn-bot-3xui
+    restart: unless-stopped
+    volumes:
+      - ./database:/app/database
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
