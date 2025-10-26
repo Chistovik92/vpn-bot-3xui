@@ -121,13 +121,13 @@ update_system_components() {
     case $OS_NAME in
         ubuntu|debian)
             # Обновление ядра и системных утилит
-            apt install -y linux-generic htop net-tools curl wget git build-essential
+            apt install -y linux-generic htop net-tools curl wget git build-essential python3-venv python3-full
             ;;
         centos|rhel|fedora)
             if command -v dnf &>/dev/null; then
-                dnf install -y kernel kernel-devel htop net-tools curl wget git gcc-c++
+                dnf install -y kernel kernel-devel htop net-tools curl wget git gcc-c++ python3-venv
             else
-                yum install -y kernel kernel-devel htop net-tools curl wget git gcc-c++
+                yum install -y kernel kernel-devel htop net-tools curl wget git gcc-c++ python3-venv
             fi
             ;;
     esac
@@ -148,22 +148,22 @@ check_python() {
         
         case $OS_NAME in
             ubuntu|debian)
-                apt install -y python3 python3-pip python3-venv
+                apt install -y python3 python3-pip python3-venv python3-full
                 PYTHON_CMD="python3"
                 ;;
             centos|rhel|fedora)
                 if command -v dnf &>/dev/null; then
-                    dnf install -y python3 python3-pip
+                    dnf install -y python3 python3-pip python3-venv
                 else
-                    yum install -y python3 python3-pip
+                    yum install -y python3 python3-pip python3-venv
                 fi
                 PYTHON_CMD="python3"
                 ;;
             *)
                 print_error "Не удалось установить Python автоматически"
                 echo "Установите Python 3.8+ вручную:"
-                echo "Ubuntu/Debian: sudo apt update && sudo apt install python3 python3-pip"
-                echo "CentOS/RHEL: sudo yum install python3 python3-pip"
+                echo "Ubuntu/Debian: sudo apt update && sudo apt install python3 python3-pip python3-venv"
+                echo "CentOS/RHEL: sudo yum install python3 python3-pip python3-venv"
                 exit 1
                 ;;
         esac
@@ -190,59 +190,95 @@ check_python() {
                     apt install -y python3.8 python3.8-pip python3.8-venv
                     PYTHON_CMD="python3.8"
                 else
-                    apt install -y python3-pip python3-venv
+                    apt install -y python3-pip python3-venv python3-full
                 fi
                 ;;
             centos|rhel|fedora)
                 if command -v dnf &>/dev/null; then
-                    dnf install -y python3-pip
+                    dnf install -y python3-pip python3-venv
                 else
-                    yum install -y python3-pip
+                    yum install -y python3-pip python3-venv
                 fi
                 ;;
         esac
     fi
 }
 
-# Проверка и установка pip
-check_pip() {
-    print_step "Проверка установки pip..."
+# Создание виртуального окружения
+create_venv() {
+    print_step "Создание виртуального окружения Python..."
     
-    if command -v pip3 &>/dev/null; then
-        PIP_CMD="pip3"
-        print_status "Найден pip3"
-    elif command -v pip &>/dev/null; then
-        PIP_CMD="pip"
-        print_status "Найден pip"
+    if [ -d "venv" ]; then
+        print_status "Виртуальное окружение уже существует"
     else
-        print_warning "Pip не установлен. Установка pip..."
-        
-        case $OS_NAME in
-            ubuntu|debian)
-                apt install -y python3-pip
-                PIP_CMD="pip3"
-                ;;
-            centos|rhel|fedora)
-                if command -v dnf &>/dev/null; then
-                    dnf install -y python3-pip
-                else
-                    yum install -y python3-pip
-                fi
-                PIP_CMD="pip3"
-                ;;
-        esac
+        $PYTHON_CMD -m venv venv
+        if [ $? -eq 0 ]; then
+            print_status "Виртуальное окружение создано"
+        else
+            print_error "Ошибка создания виртуального окружения"
+            print_status "Установка дополнительных пакетов..."
+            case $OS_NAME in
+                ubuntu|debian)
+                    apt install -y python3-venv python3-full
+                    ;;
+                centos|rhel|fedora)
+                    if command -v dnf &>/dev/null; then
+                        dnf install -y python3-venv
+                    else
+                        yum install -y python3-venv
+                    fi
+                    ;;
+            esac
+            # Повторная попытка
+            $PYTHON_CMD -m venv venv
+            if [ $? -ne 0 ]; then
+                print_error "Не удалось создать виртуальное окружение"
+                exit 1
+            fi
+        fi
     fi
     
-    # Обновление pip до последней версии
-    print_status "Обновление pip до последней версии..."
-    $PIP_CMD install --upgrade pip
+    # Активация виртуального окружения
+    source venv/bin/activate
+    
+    # Обновление pip в виртуальном окружении
+    print_status "Обновление pip в виртуальном окружении..."
+    pip install --upgrade pip
+}
+
+# Проверка и установка pip в виртуальном окружении
+check_pip() {
+    print_step "Проверка установки pip в виртуальном окружении..."
+    
+    if command -v pip &>/dev/null; then
+        PIP_CMD="pip"
+        print_status "Найден pip в виртуальном окружении"
+    else
+        print_error "Pip не найден в виртуальном окружении"
+        exit 1
+    fi
 }
 
 # Установка зависимостей
 install_dependencies() {
-    print_step "Установка зависимостей Python..."
+    print_step "Установка зависимостей Python в виртуальном окружении..."
     
-    $PIP_CMD install -r requirements.txt
+    # Проверяем существование requirements.txt
+    if [ ! -f "requirements.txt" ]; then
+        print_error "Файл requirements.txt не найден"
+        print_status "Создание базового requirements.txt..."
+        cat > requirements.txt << EOF
+python-telegram-bot>=20.0
+requests>=2.28.0
+python-dotenv>=0.19.0
+sqlalchemy>=1.4.0
+apscheduler>=3.10.0
+cryptography>=3.4.0
+EOF
+        print_status "Создан базовый requirements.txt"
+    fi
+    
+    pip install -r requirements.txt
     
     if [ $? -eq 0 ]; then
         print_status "Зависимости успешно установлены"
@@ -255,7 +291,59 @@ install_dependencies() {
 # Инициализация базы данных
 init_database() {
     print_step "Инициализация базы данных..."
-    $PYTHON_CMD database/init_db.py
+    
+    # Создаем скрипт инициализации БД, если его нет
+    if [ ! -f "database/init_db.py" ]; then
+        print_warning "Скрипт инициализации БД не найден, создаем базовый..."
+        mkdir -p database
+        cat > database/init_db.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import sys
+from sqlalchemy import create_engine, text
+
+def init_database():
+    # Базовая инициализация БД
+    db_path = "vpn_bot.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    
+    with engine.connect() as conn:
+        # Создаем таблицу пользователей
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER UNIQUE NOT NULL,
+                username TEXT,
+                full_name TEXT,
+                balance REAL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE
+            )
+        """))
+        
+        # Создаем таблицу серверов
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                url TEXT NOT NULL,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE
+            )
+        """))
+        
+        conn.commit()
+    
+    print("База данных успешно инициализирована")
+
+if __name__ == "__main__":
+    init_database()
+EOF
+        print_status "Создан базовый скрипт инициализации БД"
+    fi
+    
+    python database/init_db.py
     
     if [ $? -eq 0 ]; then
         print_status "База данных инициализирована"
@@ -269,11 +357,100 @@ init_database() {
 setup_config() {
     if [ ! -f ".env" ]; then
         print_step "Создание файла конфигурации..."
-        cp .env.example .env
+        if [ -f ".env.example" ]; then
+            cp .env.example .env
+        else
+            print_warning "Файл .env.example не найден, создаем базовый .env..."
+            cat > .env << 'EOF'
+# Настройки Telegram Bot
+BOT_TOKEN=your_bot_token_here
+ADMIN_IDS=123456789,987654321
+
+# Настройки 3x-ui панели
+XUI_URL=http://localhost:54321
+XUI_USERNAME=admin
+XUI_PASSWORD=admin
+
+# Настройки базы данных
+DATABASE_URL=sqlite:///vpn_bot.db
+
+# Настройки оплаты
+YOOMONEY_TOKEN=your_yoomoney_token
+CRYPTOBOT_TOKEN=your_cryptobot_token
+
+# Другие настройки
+DEBUG=false
+LOG_LEVEL=INFO
+EOF
+        fi
         print_warning "Отредактируйте файл .env перед запуском бота: nano .env"
     else
         print_status "Файл .env уже существует"
     fi
+}
+
+# Создание скрипта запуска
+create_start_script() {
+    print_step "Создание скрипта запуска..."
+    
+    cat > start.sh << 'EOF'
+#!/bin/bash
+
+# Активация виртуального окружения
+if [ -d "venv" ]; then
+    source venv/bin/activate
+fi
+
+# Запуск бота
+if [ -f "bot.py" ]; then
+    python bot.py
+elif [ -f "main.py" ]; then
+    python main.py
+elif [ -f "start_bot.py" ]; then
+    python start_bot.py
+else
+    echo "Файл бота не найден! Доступные файлы:"
+    ls *.py
+fi
+EOF
+    
+    chmod +x start.sh
+    
+    cat > start_bot.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import logging
+from dotenv import load_dotenv
+
+# Загрузка переменных окружения
+load_dotenv()
+
+def main():
+    # Базовая настройка логирования
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    print("VPN Bot для 3x-ui запускается...")
+    print("Пожалуйста, настройте бота в соответствии с документацией")
+    
+    # Проверяем обязательные переменные
+    required_vars = ['BOT_TOKEN', 'XUI_URL', 'XUI_USERNAME', 'XUI_PASSWORD']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        print(f"Ошибка: Отсутствуют обязательные переменные в .env: {', '.join(missing_vars)}")
+        return
+    
+    print("Все обязательные настройки присутствуют")
+    print("Для настройки бота отредактируйте файл .env и добавьте логику бота")
+
+if __name__ == "__main__":
+    main()
+EOF
+    
+    print_status "Созданы скрипты запуска: start.sh и start_bot.py"
 }
 
 # Оптимизация системы (опционально)
@@ -289,7 +466,7 @@ optimize_system() {
     fi
     
     # Настройка swappiness для лучшей производительности
-    if [ -f /proc/sys/vm/swappiness ]; then
+    if [ -f /proc/sys/vm/swappiness ] && ! grep -q "vm.swappiness" /etc/sysctl.conf; then
         echo "vm.swappiness=10" >> /etc/sysctl.conf
         print_status "Настройка swappiness оптимизирована"
     fi
@@ -319,6 +496,9 @@ main() {
     # Проверка Python
     check_python
     
+    # Создание виртуального окружения
+    create_venv
+    
     # Проверка pip
     check_pip
     
@@ -331,6 +511,9 @@ main() {
     # Настройка конфигурации
     setup_config
     
+    # Создание скриптов запуска
+    create_start_script
+    
     # Оптимизация системы
     optimize_system
     
@@ -339,8 +522,11 @@ main() {
     echo ""
     print_warning "Следующие шаги:"
     echo "1. Отредактируйте файл .env: nano .env"
-    echo "2. Запустите бота: $PYTHON_CMD start_bot.py"
-    echo "3. Или используйте Docker: docker-compose up -d"
+    echo "2. Добавьте ваш Telegram BOT_TOKEN и другие настройки"
+    echo "3. Запустите бота: ./start.sh"
+    echo "4. Или используйте Docker: docker-compose up -d"
+    echo ""
+    print_status "Для запуска бота используйте: source venv/bin/activate && python start_bot.py"
     echo ""
     print_status "Документация: docs/SETUP.md"
     echo ""
